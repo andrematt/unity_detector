@@ -15,12 +15,13 @@ using System.Linq;
 using System.Collections;
 
 // TODO: 
-// fare in modo da aggiornare la posizione dei bounding box
-// aggiungi touch screen per attivare visualizzazioni
-// Fare una gestione più sensata invece di una lista di foreach: 
-// fai un oggetto del tipo 
-// { element1: boundingBox, element2: null, element3: boundingBox
-// e poi lavora su quello: dovrebbe essere un dictionary
+// Move the anchored objects in a separate list, used by the AnchorCreators. 
+// Otherwise the anchors are resetted at each update, because of the
+// boxSavedOutlines.Clear(),
+// Do not place visualization at click, bu use a placeholder, and use a 
+// panel to define the rule element. After the element is saved, the 
+// placeholder is updated with these new info, or discarded.
+// maybe: use a dictionary instead of lists for store saved bounding boxes
 
 public class PhoneARCamera : MonoBehaviour
 {
@@ -35,8 +36,6 @@ public class PhoneARCamera : MonoBehaviour
         set { _detectableDict= value; }
     }
 
-      
-        
         
         // Cache ARRaycastManager GameObject from ARCoreSession
     private ARRaycastManager _raycastManager;
@@ -89,6 +88,9 @@ public class PhoneARCamera : MonoBehaviour
     public List<BoundingBox> boxSavedOutlines = new List<BoundingBox>();
     // lock model when its inferencing a frame
     private bool isDetecting = false;
+    
+    // labels of element permanently added to anchors 
+    public List<string> permanentlyStoredLabels = new List<string>();
 
     // list of labels detected across frames
     public List<String> saveLabels = new List<String>();
@@ -269,27 +271,6 @@ public class PhoneARCamera : MonoBehaviour
         }
     }
 
-    // instead of consider ...
-    // UNUSED!
-    private void UpdateBoxOutlines()
-    {
-        // if savedoutlines is empty, add current frame outlines if possible.
-        if (this.boxSavedOutlines.Count == 0)
-        {
-            // no bounding boxes in current frame
-            if (this.boxOutlines == null || this.boxOutlines.Count == 0)
-            {
-                return;
-            }
-            // deep copy current frame bounding boxes
-            foreach (var outline in this.boxOutlines)
-            {
-                this.boxSavedOutlines.Add(outline);
-            }
-            return;
-        }
-
-    }
 
     // Check if the newOutline has higher confidence of at last 1 saved label
     // TODO: it is useless to use a list if it is planned to only store 1 
@@ -325,11 +306,11 @@ public class PhoneARCamera : MonoBehaviour
     }
     
     //
-    private bool alreadyInSavedList(string label)
+    private bool alreadyInToSaveList(BoundingBox element, List<BoundingBox> elementsToAdd)
     {
-        foreach (var outline in this.boxSavedOutlines)
+        foreach (var outline in elementsToAdd)
         {
-            if (label == outline.Label)
+            if (element.Label == outline.Label)
             {
                 return true;
             }
@@ -339,68 +320,59 @@ public class PhoneARCamera : MonoBehaviour
     
     // Remove items if they are not on the detection list and the camera moved 
     // more than X pixels (TODO)
+    /*
     private void removeNoMoreVisibleItems(List<BoundingBox>boundingBoxList)
     {
-        List<String> itemsToRemoveLabels = new List<String>();
-        foreach (var element in this.boxSavedOutlines)
+        List<BoundingBox> itemsToRemove= new List<BoundingBox>();
+        foreach (var elementSaved in this.boxSavedOutlines)
         {
-            //foreach element in 
-            break; 
-        }
-        //foreach (var item in itemsToRemove)
-            //{
-             //   break;
-              //  removeItemsByLabel(item.Label);
-           // }
-    }
-    
-    // 
-    private void NewBoxOutliner()
-    {
-        if (this.boxOutlines.Count > 0)
-        {
-            List<BoundingBox> itemsToAdd = new List<BoundingBox>();
-            List<String> itemsToRemoveLabels = new List<String>();
-            foreach (var outline in this.boxOutlines)
+            bool found = false;
+            foreach (var elementDetected in boundingBoxList)
             {
-                if (!alreadyInSavedList(outline.Label))
+                if (elementSaved.Label == elementDetected.Label)
                 {
-                    //ScreenLog.Log("NOT IN ALREADY SAVED LIST: DIRECTLY ADDING" + outline.Label);
-                    itemsToAdd.Add(outline);
-                }
-                else
-                {
-                    //ScreenLog.Log("NOT THE FIRST ELEMENT WITH ITS LABEL: MAKING CONFIDENCE CHECK");
-                    //if (checkHigherConfidence(outline))
-                    //{ 
-                        itemsToAdd.Add(outline);
-                        itemsToRemoveLabels.Add(outline.Label);
-                        //ScreenLog.Log("CHECK DONE, HIGHER CONFIDENCE LABEL FOUND: ADDING " + outline.Label);
-                    //}
+                    found = true;
                 }
             }
-            //remove items with the same label
-            // if is useless with foreach
-            //if (itemsToAdd.Count > 0)
-            //{
-                foreach (var item in itemsToAdd)
-                {
-                    removeItemsByLabel(item.Label);
-                }
-            //}
-            //remove items not visible anymore TODO
-            //removeNoMoreVisibleItems(this.boxOutLines);
-
-            //add the new elements
-            this.boxSavedOutlines.AddRange(itemsToAdd);
-            //ScreenLog.Log("updated boxSavedOutlines:" + this.boxSavedOutlines.Label);
+            if (!found)
+            {
+                itemsToRemove.Add(elementSaved);
+            }
         }
-        // no detection found: clear the screen?
-        // TODO: better, remove just objects not on the screen anymore
-        else
+        //remove: need a "camera stability" check before
+        this.boxSavedOutlines.RemoveAll(item => itemsToRemove.Contains(item));
+    }
+    */
+    
+    // Save the detected bounding boxes. Overlapping ones are discarded. 
+    private void NewBoxOutliner()
+    {
+        List<BoundingBox> itemsToAdd = new List<BoundingBox>();
+        List<String> alreadyFound = new List<String>();
+        // Remove all old detections. It is not worthy to make confidence check, 
+        // because the phone is not static, hence old detections will always
+        // move away from the target object. 
+        // Eventually, test if the phone is standing still.
+        if (localization)
         {
-            this.boxSavedOutlines.Clear();
+            return;
         }
+        boxSavedOutlines.Clear();
+        foreach (var outline in this.boxOutlines)
+        {
+            if (!alreadyInToSaveList(outline, itemsToAdd))
+            {
+                itemsToAdd.Add(outline);
+            }
+            //else
+            //{
+                // If their bounding box overlaps, keeps the higher confidence one
+                // ... 
+                // Else, keep both
+                // ...
+            //}
+        }
+        this.boxSavedOutlines.AddRange(itemsToAdd);
     }
 
     // merging bounding boxes and save result to boxSavedOutlines
@@ -625,6 +597,8 @@ public class PhoneARCamera : MonoBehaviour
 
     private static void DrawLabel(Rect position, string text)
     {
+        //ScreenLog.Log("I AM DRAWING A LABEL!!");
+        //ScreenLog.Log(position.ToString());
         GUI.Label(position, text, labelStyle);
     }
 
