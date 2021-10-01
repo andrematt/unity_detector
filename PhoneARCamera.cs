@@ -15,6 +15,12 @@ using System.Linq;
 using System.Collections;
 
 // TODO: 
+// volendo, se un oggetto è già nella lista salvati, ignora i nuovi bounding 
+// box relativi
+// made the anchored objects clickable:
+// in placeholograms, fai che se la lsita di oggetti salvati è > 0 usa anche 
+// quella per determinare i click (se un oggetto c'è, riprendilo dai saved 
+// anchors, invece di posizionare un'altra ancora)
 // Move the anchored objects in a separate list, used by the AnchorCreators. 
 // Otherwise the anchors are resetted at each update, because of the
 // boxSavedOutlines.Clear(),
@@ -90,7 +96,7 @@ public class PhoneARCamera : MonoBehaviour
     private bool isDetecting = false;
     
     // labels of element permanently added to anchors 
-    public List<string> permanentlyStoredLabels = new List<string>();
+    public List<BoundingBox> permanentlyStoredDetections = new List<BoundingBox>();
 
     // list of labels detected across frames
     public List<String> saveLabels = new List<String>();
@@ -254,7 +260,7 @@ public class PhoneARCamera : MonoBehaviour
         // Do not draw bounding boxes after localization.
         if (localization)
         {
-            return;
+            //return;
         }
 
         if (this.boxSavedOutlines != null && this.boxSavedOutlines.Any())
@@ -344,35 +350,42 @@ public class PhoneARCamera : MonoBehaviour
     }
     */
     
-    // Save the detected bounding boxes. Overlapping ones are discarded. 
+    //
+    private int getMaxConfidence(List <BoundingBox> BBList)
+    {
+        int max = 0;
+        for (int i = 1; i < BBList.Count; i++)
+        {
+           if (BBList[i].Confidence > BBList[max].Confidence)
+            {
+                max = i;
+            }
+        }
+        return max;
+    }
+    
+    // Save the detected bounding boxes. 
+    // TODO: detect objects in the permanent list??
     private void NewBoxOutliner()
     {
-        List<BoundingBox> itemsToAdd = new List<BoundingBox>();
         List<String> alreadyFound = new List<String>();
-        // Remove all old detections. It is not worthy to make confidence check, 
-        // because the phone is not static, hence old detections will always
-        // move away from the target object. 
-        // Eventually, test if the phone is standing still.
-        if (localization)
-        {
-            return;
-        }
+   
+        //if (localization)
+        //{
+            //return;
+        //}
         boxSavedOutlines.Clear();
-        foreach (var outline in this.boxOutlines)
+        if (this.boxOutlines.Count > 0)
         {
-            if (!alreadyInToSaveList(outline, itemsToAdd))
+            List<BoundingBox> itemsToAdd = new List<BoundingBox>();
+            foreach (var element in this.boxOutlines)
             {
-                itemsToAdd.Add(outline);
+                itemsToAdd.Add(element);
             }
-            //else
-            //{
-                // If their bounding box overlaps, keeps the higher confidence one
-                // ... 
-                // Else, keep both
-                // ...
-            //}
+            int max = getMaxConfidence(itemsToAdd);
+            //this.boxSavedOutlines.AddRange(itemsToAdd);
+            this.boxSavedOutlines.Add(this.boxOutlines[max]);
         }
-        this.boxSavedOutlines.AddRange(itemsToAdd);
     }
 
     // merging bounding boxes and save result to boxSavedOutlines

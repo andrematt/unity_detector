@@ -14,10 +14,12 @@ public class AnchorCreator : MonoBehaviour
         }
         s_Hits.Clear();
         anchorDic.Clear();
+        labelsOfAnchors.Clear();
     }
 
     void Awake()
     {
+        // TODO: load the script related to the RUle Canvas game object
         m_RaycastManager = GetComponent<ARRaycastManager>();
         m_AnchorManager = GetComponent<ARAnchorManager>();
         GameObject cameraImage = GameObject.Find("Camera Image");
@@ -32,6 +34,19 @@ public class AnchorCreator : MonoBehaviour
         Debug.Log($"DEBUG: Creating regular anchor. distance: {hit.distance}. session distance: {hit.sessionRelativeDistance} type: {hit.hitType}.");
         return m_AnchorManager.AddAnchor(hit.pose);
     }
+    
+    //
+    public void hitsToAnchorManager(ARRaycastHit hit, BoundingBox outline)
+    {
+        ScreenLog.Log("Managing an hit");
+        ScreenLog.Log("Hit:" + hit.hitType);
+        ScreenLog.Log("outline label:" + outline.Label);
+    }
+
+    public bool alreadyInAnchorList(BoundingBox outline)
+    {
+        return labelsOfAnchors.Contains(outline.Label);
+    }
 
     private bool Pos2Anchor(float x, float y, BoundingBox outline)
     {
@@ -44,15 +59,33 @@ public class AnchorCreator : MonoBehaviour
             // Raycast hits are sorted by distance, so the first one will be the closest hit.
             var hit = s_Hits[0];
             //TextMesh anchorObj = GameObject.Find("New Text").GetComponent<TextMesh>();
+
+            // 
+            if (alreadyInAnchorList(outline))
+            {
+                // TODO: load the new rule element from the RUle Canvas game object 
+                ScreenLog.Log("This anchor already exist: edit rule parameter...");
+                phoneARCamera.localization = false;
+                return false;
+            }
+            else
+            {
+                // TODO: load the edit rule element from the RUle Canvas game object 
+                ScreenLog.Log("New anchor: create a new rule element...");
+            }
+
             // Create a new anchor
             Debug.Log("Creating Anchor");
             var anchor = CreateAnchor(hit);
             if (anchor)
             {
+                labelsOfAnchors.Add(outline.Label);
+                ScreenLog.Log("anchor created: localization false");
+                phoneARCamera.localization = false;
                 Debug.Log($"DEBUG: creating anchor. {outline}");
                 // Remember the anchor so we can remove it later.
                 anchorDic.Add(anchor, outline);
-                Debug.Log($"DEBUG: Current number of anchors {anchorDic.Count}.");
+                ScreenLog.Log($"DEBUG: Current number of anchors {anchorDic.Count}.");
                 return true;
             }
             else
@@ -69,6 +102,7 @@ public class AnchorCreator : MonoBehaviour
         return false;
     }
 
+    
     void Update()
     {
         // If bounding boxes are not stable, return directly without raycast
@@ -77,7 +111,8 @@ public class AnchorCreator : MonoBehaviour
             return;
         }
 
-        boxSavedOutlines = phoneARCamera.boxSavedOutlines;
+        boxSavedOutlines = phoneARCamera.permanentlyStoredDetections; 
+        //BoxSavedOutlines = phoneARCamera.storedOutlines;
         shiftX = phoneARCamera.shiftX;
         shiftY = phoneARCamera.shiftY;
         scaleFactor = phoneARCamera.scaleFactor;
@@ -139,6 +174,8 @@ public class AnchorCreator : MonoBehaviour
         }
 
     }
+
+    public List<string> labelsOfAnchors = new List<string>();
 
     static List<ARRaycastHit> s_Hits = new List<ARRaycastHit>();
 
